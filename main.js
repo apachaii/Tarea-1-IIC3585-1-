@@ -47,14 +47,20 @@ function listElement() {
     }
 
     function getText(symbol) {
-        const identifiedTexts = identified ? identified.getText() : [''];
+        const identifiedTexts = identified.getText();
+
+        if (identifiedTexts.length === 0){
+            return [`    ${symbol}`];
+        }
 
         const flattenedIdentifiedTexts = _.flattenDeep(identifiedTexts);
+        const align = ' '.repeat(symbol.length);
+
         return flattenedIdentifiedTexts.map(
             (textLine, index) => {
                 if (index === 0)
                     return `    ${symbol} ${textLine}`;
-                return `      ${textLine}`;
+                return `    ${align} ${textLine}`;
             }
         );
     }
@@ -86,7 +92,7 @@ function list(numbered, startingNumber = 0) {
         const elementsText = elements.map(
             (element, index) => {
                 return element.getText(
-                    numbered ? startingNumber + index : '*'
+                    numbered ? `${startingNumber + index}.` : '*'
                 )
             });
         return _.flattenDeep(elementsText);
@@ -578,11 +584,17 @@ function identify_lines() {
 
 const input = `
 
-99998. hols qe
-2. fodmsfps
-
-3. ==== 
-   
+- hola
+  que pasó
+  - que
+  - cosa
+- Buano
+  8. n
+  2. n
+  3. n
+-
+-
+-
 
 
 
