@@ -9,9 +9,10 @@ function headline(level, content){
 
 function text(content){
     return {
+        toHeadline: (level) => headline(level,content),
+
         getText: () => `${content}`,
         getHTML: () => `<p>${content}<\p>`,
-        toHeadline: (level) => headline(level,content),
     }
 }
 
