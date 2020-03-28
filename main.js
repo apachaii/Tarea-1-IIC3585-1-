@@ -68,7 +68,7 @@ function listElement() {
     }
 }
 
-function list(numbered) {
+function list(numbered, startingNumber = 0) {
     const elements = [];
 
     function addLine(line) {
@@ -86,7 +86,7 @@ function list(numbered) {
         const elementsText = elements.map(
             (element, index) => {
                 return element.getText(
-                    numbered ? index+1 : '*'
+                    numbered ? startingNumber + index : '*'
                 )
             });
         return _.flattenDeep(elementsText);
@@ -108,6 +108,7 @@ const parsingStates = {
     CODE_MARK: 'code_mark',
     CODE_SPACES: 'code_spaces',
     UNORDERED_LIST: 'unordered_list',
+    ORDERED_LIST: 'ordered_list',
 };
 
 function identified_lines() {
@@ -190,7 +191,19 @@ function identified_lines() {
         state = parsingStates.UNORDERED_LIST;
     }
 
-    function endUnorderedList() {
+    function startOrderedList(number, content) {
+
+        const newList = list(true,  parseInt(number));
+        newList.addElement();
+        if (content && content.length){
+            newList.addLine(content)
+        }
+
+        identified_array.push(newList);
+        state = parsingStates.ORDERED_LIST;
+    }
+
+    function endList() {
         state = parsingStates.STANDARD;
         currentListSymbol = null;
 
@@ -232,7 +245,9 @@ function identified_lines() {
         addLineToCode,
 
         startUnorderedList,
-        endUnorderedList,
+        startOrderedList,
+        endList,
+
         addElementToList,
         addLineToList,
 
@@ -284,7 +299,7 @@ function identify_lines() {
     );
 
     const identifyCodeMark = basicPatterIdentify(
-        /^`{3}.+$/,
+        /^`{3}.*$/,
         (_, current_identified) => current_identified.startCodeFromMark(),
     );
 
@@ -305,6 +320,15 @@ function identify_lines() {
         },
     );
 
+    const identifyOrderedList = basicPatterIdentify(
+        /^ {0,3}(0|[1-9][0-9]*)\.( (.*))?$/,
+        (isUnordered, current_identified, ) => {
+            const number = isUnordered[1];
+            const content = isUnordered[3];
+            current_identified.startOrderedList(number, content);
+        },
+    );
+
     function defaultIdentifyText(line, current_identified) {
         current_identified.addText(line);
     }
@@ -314,18 +338,19 @@ function identify_lines() {
         identifyCodeMark,
         identifyCodeSpaces,
         identifyUnorderedList,
+        identifyOrderedList,
         defaultIdentifyText,
     ];
 
     // After Text
 
     const identifySpecialHeadline1 = basicPatterIdentify(
-        /^ {0,3}=*$/,
-        (_, current_identified) => current_identified.convertPreviousTextIntoHeadline(1)
+        /^ {0,3}=+\s*$/,
+        (line, current_identified) => current_identified.convertPreviousTextIntoHeadline(1)
     );
 
     const identifySpecialHeadline2 = basicPatterIdentify(
-        /^ {0,3}=*$/,
+        /^ {0,3}-+\s*$/,
         (_, current_identified) => current_identified.convertPreviousTextIntoHeadline(2)
     );
 
@@ -371,10 +396,10 @@ function identify_lines() {
 
     // Unordered List
 
-    const unorderedListLastLineProcess = (_, current_identified, currentIndex, lines_array) => {
+    const listLastLineProcess = (_, current_identified, currentIndex, lines_array) => {
         const isLastLine = currentIndex === lines_array.length-1;
         if (isLastLine){
-            current_identified.endUnorderedList();
+            current_identified.endList();
         }
     };
 
@@ -384,7 +409,7 @@ function identify_lines() {
             const content = isNewElement[1];
             current_identified.addLineToList(content);
 
-            unorderedListLastLineProcess(_, current_identified, currentIndex, lines_array);
+            listLastLineProcess(_, current_identified, currentIndex, lines_array);
         }
     );
 
@@ -394,16 +419,16 @@ function identify_lines() {
             const content = isListElement[3];
             current_identified.addElementToList(content);
 
-            unorderedListLastLineProcess(_, current_identified, currentIndex, lines_array);
+            listLastLineProcess(_, current_identified, currentIndex, lines_array);
         }
         return isListElement;
     };
 
-    function identifyCustomEmptyLineFromUnorderedLine(line, current_identified, currentIndex, lines_array) {
+    function identifyCustomEmptyLineFromList(line, current_identified, currentIndex, lines_array) {
         const is_empty = /^\s*$/.test(line);
         if (is_empty){
             current_identified.increaseBlankCount(_, current_identified, currentIndex, lines_array);
-            unorderedListLastLineProcess(_, current_identified, currentIndex, lines_array);
+            listLastLineProcess(_, current_identified, currentIndex, lines_array);
         }
         if (current_identified.getBlankCount() > 2){
             current_identified.resetBlankCount();
@@ -413,11 +438,21 @@ function identify_lines() {
     }
 
     function finishUnorderedList(_, current_identified) {
-        current_identified.endUnorderedList();
+        current_identified.endList();
         return false;
     }
 
+    // Ordered List
 
+    const identifyNewOrderedListElement = basicPatterIdentify(
+        /^ {0,3}(0|[1-9][0-9]*)\.( (.*))?$/,
+        (isOrderedListElement, current_identified, currentIndex, lines_array) => {
+            const content = isOrderedListElement[3];
+            current_identified.addElementToList(content);
+
+            listLastLineProcess(_, current_identified, currentIndex, lines_array);
+        }
+    );
 
     return (current_identified, line, currentIndex, lines_array) => {
         const identify_state = current_identified.getCurrentState();
@@ -508,11 +543,32 @@ function identify_lines() {
                     [
                         identifyNewListLine,
                         K_identifyNewListElement,
-                        identifyCustomEmptyLineFromUnorderedLine,
+                        identifyCustomEmptyLineFromList,
                         finishUnorderedList,
                         ...defaultIdentify,
                     ],
                 );
+
+                break;
+            }
+
+            case parsingStates.ORDERED_LIST:{
+
+                identify_until(
+                    line,
+                    current_identified,
+                    currentIndex,
+                    lines_array,
+                    [
+                        identifyNewListLine,
+                        identifyNewOrderedListElement,
+                        identifyCustomEmptyLineFromList,
+                        finishUnorderedList,
+                        ...defaultIdentify,
+                    ],
+                );
+
+              break;
             }
         }
         return current_identified;
@@ -520,29 +576,19 @@ function identify_lines() {
 }
 
 
-const input = `- hola1
-  - hola2
-    hola2.1
-    hola2.2
-    hola2.3
-  - hola2.4
-    hola2.5
-    hola2.6
-    hola2.7
-    hola2.8
-- hola3
-  
-- hola4
-  hola5
+const input = `
 
-- # hola6
-        hola
-         que
-          tal
+99998. hols qe
+2. fodmsfps
 
-            hola
-             que
-              tal`;
+3. ==== 
+   
+
+
+
+hhhh
+
+`;
 
 const step1 = input.split('\n');
 const step2 = step1.reduce(identify_lines(), identified_lines());
@@ -551,4 +597,3 @@ const textLines = step2.getText();
 const separatedLines = _.flatten(textLines);
 
 console.log(separatedLines.join('\n'));
-console.log(1);
