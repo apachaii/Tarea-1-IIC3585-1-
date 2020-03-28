@@ -1,62 +1,219 @@
-const lineTypes = {
-    HEADLINE: 'headline',
-    TEXT: 'text',
-    CODE: 'code',
-    LIST: 'list',
-};
-
 function headline(level, content){
-    const type = lineTypes.HEADLINE;
     return {
-        getType: () => type,
-
         getText: () => `\n${content}\n`,
         getHTML: () => `<h${level}>${content}<\h${level}>`
     }
 }
 
 function text(content){
-    const type = lineTypes.TEXT;
     return {
-        getType: () => type,
-
         getText: () => `${content}`,
         getHTML: () => `<p>${content}<\p>`,
         toHeadline: (level) => headline(level,content),
     }
 }
 
+function code(){
+    const lines = [];
+    return {
+        addLine: (line) => lines.push(line),
+
+        getText: () => lines.map(line=>`    ${line}`),
+        getHTML: () => `<code>${lines.join('\n')}<\code>`,
+    }
+}
+
+function listElement() {
+    const lines = [];
+    let identified = null;
+
+    function identify() {
+        identified = lines.reduce(identify_lines, identified_lines());
+    }
+
+    function getText() {
+        const identifiedTexts = identified ? identified.getText() : [''];
+
+        // TODO loadash flatten
+
+        const listedText = identifiedTexts.map(
+            (textLine, index) => {
+                if (index === 0)
+                    return `* ${textLine}`;
+                return `  ${textLine}`;
+            }
+        );
+        return listedText;
+    }
+
+    return {
+        addLine: (line) => lines.push(line),
+        identify,
+
+        getText,
+        getHTML: () => identified ? identified.getHTML() : '',
+    }
+}
+
+function list(numbered) {
+    const elements = [];
+
+    function addLine(line) {
+        const lastIndex = elements.length - 1;
+        const elementHead = elements[lastIndex];
+
+        elementHead.addLine(line);
+    }
+
+    function identifyList() {
+        elements.forEach((element)=>element.identify())
+    }
+
+    function getText(){
+        const elementsText = elements.map(element => element.getText())
+        return elementsText;
+    }
+
+    return {
+        addElement: () => elements.push(listElement()),
+        addLine,
+        identifyList,
+
+        getText,
+        getHTML: () => elements.map(element => element.getHTML()),
+    }
+}
+
 const parsingStates = {
-    NONE: 'none',
-    PREVIOUS_TEXT: 'previous_text',
+    STANDARD: 'standard',
+    AFTER_TEXT: 'after_text',
+    CODE_MARK: 'code_mark',
+    CODE_SPACES: 'code_spaces',
+    UNORDERED_LIST: 'unordered_list',
 };
-
-const add_to_state = {
-    'headline':'none',
-    'text':'previous_text'
-};
-
 
 function identified_lines() {
     let identified_array = [];
-    let state = parsingStates.NONE;
+    let state = parsingStates.STANDARD;
+    let currentListSymbol = null;
 
-    function addLine(line) {
-        state = add_to_state[line.getType()];
-        identified_array.push(line)
+    function getHead() {
+        const lastIndex = identified_array.length - 1;
+        return identified_array[lastIndex];
+    }
+
+    // Headline
+    function addHeadline(headline_level,headline_content) {
+        const new_headline = headline(headline_level,headline_content);
+        identified_array.push(new_headline);
+        state = parsingStates.STANDARD;
+    }
+
+    // Text
+    function addText(line) {
+        const newText = text(line);
+        identified_array.push(newText);
+        state = parsingStates.AFTER_TEXT;
     }
 
     function convertPreviousTextIntoHeadline(headline_level) {
+        const oldText = getHead();
         const lastIndex = identified_array.length - 1;
-        const oldText =  identified_array[lastIndex];
         identified_array[lastIndex] = oldText.toHeadline(headline_level);
 
-        state = parsingStates.NONE;
+        state = parsingStates.STANDARD;
+    }
+
+    // Code
+    function addCode() {
+        const newCode = code();
+        identified_array.push(newCode);
+    }
+
+    function startCodeFromMark() {
+        addCode();
+        state = parsingStates.CODE_MARK;
+    }
+
+    function endCodeFromMark() {
+        state = parsingStates.STANDARD;
+    }
+
+    function startCodeFromSpaces(line) {
+        addCode();
+        state = parsingStates.CODE_SPACES;
+        addLineToCode(line);
+    }
+
+    // TODO add remove the empty lines from the end of the code
+    function endCodeFromSpaces(){
+        const finishedCode = getHead();
+        state = parsingStates.STANDARD;
+    }
+
+    function addLineToCode(line) {
+        const activeCode = getHead();
+        activeCode.addLine(line);
+    }
+
+    // List
+    function startUnorderedList(symbol, content) {
+        currentListSymbol = symbol;
+
+        const newList= list(false);
+        newList.addElement();
+        if (content && content.length){
+            newList.addLine(content)
+        }
+
+        identified_array.push(newList);
+        state = parsingStates.UNORDERED_LIST;
+    }
+
+    function endUnorderedList() {
+        state = parsingStates.STANDARD;
+        currentListSymbol = null;
+
+        const currentList = getHead();
+        currentList.identifyList();
+    }
+    
+    function addElementToList(content) {
+        const currentList = getHead();
+        currentList.addElement();
+        if (content && content.length){
+            currentList.addLine(content)
+        }
+    }
+
+    function addLineToList(line) {
+        const currentList = getHead();
+        if (line && line.length){
+            currentList.addLine(line)
+        }
     }
 
     return {
         getCurrentState: () => state,
-        addLine,
+        getCurrentListSymbol: () => currentListSymbol,
+
+        addHeadline,
+
+        addText,
+
+        startCodeFromMark,
+        endCodeFromMark,
+        startCodeFromSpaces,
+        endCodeFromSpaces,
+        addLineToCode,
+
+        startUnorderedList,
+        endUnorderedList,
+        addElementToList,
+        addLineToList,
+
+
+        setStandardState: () => state = parsingStates.STANDARD,
         convertPreviousTextIntoHeadline,
 
         getText: () => identified_array.map((line)=> line.getText()),
@@ -64,67 +221,264 @@ function identified_lines() {
     }
 }
 
-function identify_lines(current_identified, line) {
-    const state = current_identified.getCurrentState();
 
-    function identifyStandard() {
+function identify_lines(current_identified, line, currentIndex, lines_array) {
+    const identify_until = functions => {
+        return functions.reduce(
+            (do_continue, func) => {
+                if (do_continue){
+                    return !func(line);
+                }
+                return false;
+            },
+            true,
+        );
+    };
+
+
+    const identify_state = current_identified.getCurrentState();
+    const identify_list_symbol = current_identified.getCurrentListSymbol();
+    
+    function identifyEmptyStandard() {
+        const isEmpty = /^\s*$/.test(line);
+        if(isEmpty){
+            current_identified.setStandardState();
+        }
+        return isEmpty;
+    }
+    
+    function identifyHeadline() {
         const isHeadline = /^ {0,3}(#{1,6})( *(.*))?$/.exec(line);
         if (isHeadline){
             const headline_level = isHeadline[1].length;
-            const headline_content = isHeadline[2];
-            const new_headline = headline(headline_level,headline_content);
-            current_identified.addLine(new_headline);
-
-            return;
+            const headline_content = isHeadline[3];
+            current_identified.addHeadline(headline_level,headline_content);
         }
-
-        // Text
-        current_identified.addLine(text(line));
+        return isHeadline;
     }
 
-    switch(state){
-        // Standard parsing
-        case parsingStates.NONE:
+    function identifyCodeMark() {
+        const isCodeMark = /^`{3}.+$/.test(line);
+        if (isCodeMark){
+            current_identified.startCodeFromMark();
+        }
+        return isCodeMark;
+    }
 
-            identifyStandard();
+    function  identifyCodeSpaces() {
+        const isCodeSpaces = /^ {4}.+$/.test(line);
+        if (isCodeSpaces){
+            const usedLine = line.substr(4);
+            current_identified.startCodeFromSpaces(usedLine);
+        }
+        return isCodeSpaces;
+    }
+
+    function  identifyUnorderedList() {
+        const isUnordered = /^ {0,3}([-+*])( (.*))?$/.exec(line);
+        if (isUnordered){
+            const symbol = isUnordered[1];
+            const content = isUnordered[3];
+            current_identified.startUnorderedList(symbol, content);
+        }
+        return isUnordered;
+    }
+
+    function defaultIdentifyText() {
+        current_identified.addText(line);
+    }
+
+    const defaultIdentify = [
+        identifyHeadline,
+        identifyCodeMark,
+        identifyCodeSpaces,
+        identifyUnorderedList,
+        defaultIdentifyText,
+    ];
+
+    switch(identify_state){
+        
+        case parsingStates.STANDARD: {
+
+            identify_until(
+                [
+                    identifyEmptyStandard,
+                    ...defaultIdentify,
+                ],
+            );
 
             break;
+        }
 
-        case parsingStates.PREVIOUS_TEXT:
+        case parsingStates.AFTER_TEXT: {
 
-            // Special Headlines
-            const isSpecialHeadline1 = /^ {0,3}=*$/.test(line);
-            if (isSpecialHeadline1){
-                current_identified.convertPreviousTextIntoHeadline(1);
-                break;
+            function identifySpecialHeadline1() {
+                const isSpecialHeadline1 = /^ {0,3}=*$/.test(line);
+                if (isSpecialHeadline1) {
+                    current_identified.convertPreviousTextIntoHeadline(1);
+                }
+                return isSpecialHeadline1;
             }
 
-            const isSpecialHeadline2 = /^ {0,3}-*$/.exec(line);
-            if (isSpecialHeadline2){
-                current_identified.convertPreviousTextIntoHeadline(2);
-                break;
+            function identifySpecialHeadline2() {
+                const isSpecialHeadline2 = /^ {0,3}-*$/.test(line);
+                if (isSpecialHeadline2) {
+                    current_identified.convertPreviousTextIntoHeadline(2);
+                }
+                return isSpecialHeadline2;
             }
 
-            identifyStandard();
+            identify_until(
+                [
+                    identifySpecialHeadline1,
+                    identifySpecialHeadline2,
+                    identifyEmptyStandard,
+                    ...defaultIdentify,
+                ],
+            );
+            break;
+        }
+
+        case parsingStates.CODE_MARK:{
+            function identifyCodeMarkEnd() {
+                const isMarkEnd = /^`{3}$/.test(line);
+                if (isMarkEnd){
+                    current_identified.endCodeFromMark();
+                }
+                return isMarkEnd;
+            }
+
+            identify_until(
+                [
+                    identifyCodeMarkEnd,
+                    () => current_identified.addLineToCode(line),
+                ]
+            );
+
+            break;
+        }
+
+        case parsingStates.CODE_SPACES:{
+
+            function codeSpacesLastLineProcess () {
+                const isLastLine = currentIndex === lines_array.length-1;
+                if (isLastLine){
+                    current_identified.endCodeFromSpaces();
+                }
+            }
+
+            function identifyCodeLineFromSpaces() {
+                const isACodeLine =  /^ {4}.+$/.test(line);
+                if (isACodeLine){
+                    const usedLine = line.substr(4);
+                    current_identified.addLineToCode(usedLine);
+
+                    codeSpacesLastLineProcess();
+                }
+                return isACodeLine;
+            }
+
+            function identifyCustomEmptyLineFromSpaces() {
+                const isEmpty = /^\s*$/.test(line);
+                if (isEmpty){
+                    codeSpacesLastLineProcess();
+                }
+                return isEmpty;
+            }
+
+            function finishCodeSpaces() {
+                current_identified.endCodeFromSpaces();
+                return false;
+            }
+
+            identify_until(
+                [
+                    identifyCodeLineFromSpaces,
+                    identifyCustomEmptyLineFromSpaces,
+                    finishCodeSpaces,
+                    ...defaultIdentify,
+                ],
+            );
+
+            break;
+        }
+
+        case parsingStates.UNORDERED_LIST: {
+
+            function unorderedListLastLineProcess() {
+                const isLastLine = currentIndex === lines_array.length-1;
+                if (isLastLine){
+                    current_identified.endUnorderedList();
+                }
+            }
+
+            function identifyNewListLine() {
+                const isNewElement = /^ {2}(.*)$/.exec(line);
+                if (isNewElement){
+                    const content = isNewElement[1];
+                    current_identified.addLineToList(content);
+
+                    unorderedListLastLineProcess();
+                }
+                return isNewElement;
+            }
+
+            function identifyNewListElement() {
+                const isListElement = /^ {0,3}([-+*])( (.*))?$/.exec(line);
+                if (isListElement && isListElement[1] === identify_list_symbol){
+                    const content = isListElement[3];
+                    current_identified.addElementToList(content);
+
+                    unorderedListLastLineProcess();
+                }
+                return isListElement;
+            }
+
+            function identifyCustomEmptyLineFromUnorderedLine() {
+                const is_empty = /^\s*$/.test(line);
+                if (is_empty){
+                    unorderedListLastLineProcess();
+                }
+                return is_empty;
+            }
+
+            function finishUnorderedList() {
+                current_identified.endUnorderedList();
+                return false;
+            }
+
+            identify_until(
+                [
+                    identifyNewListLine,
+                    identifyNewListElement,
+                    identifyCustomEmptyLineFromUnorderedLine,
+                    finishUnorderedList,
+                    ...defaultIdentify,
+                ],
+            );
+
+            break;
+        }
     }
     return current_identified;
 }
 
-const input =
-`# Hola1
-Hola1
-=====
-## Hola2
-Hola2
------
-Hola0
-### Hola3
-#### Hola4
-##### Hola5
-###### Hola6`;
+const input = `
+- hola1
+  - hola2
+    hola2.1
+    hola2.2
+- hola3
+  
+- hola4
+  hola5
 
+- hola6
+  
+  
+`;
 
 const step1 = input.split('\n');
 const step2 = step1.reduce(identify_lines, identified_lines());
 console.log(step2.getText());
-console.log(step2.getHTML());
+//console.log(step2.getHTML());
