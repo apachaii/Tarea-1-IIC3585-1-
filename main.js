@@ -608,5 +608,9 @@ const step2 = step1.reduce(identify_lines(), identified_lines());
 
 const textLines = step2.getText();
 const separatedLines = _.flatten(textLines);
+const WEB = separatedLines.join('\n')
+console.log(textLines);
 
-console.log(separatedLines.join('\n'));
+module.exports = {
+    WEB
+  }
