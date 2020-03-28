@@ -1,6 +1,8 @@
+const _ = require('lodash');
+
 function headline(level, content){
     return {
-        getText: () => `\n${content}\n`,
+        getText: () => `${content}\n`,
         getHTML: () => `<h${level}>${content}<\h${level}>`
     }
 }
@@ -14,11 +16,24 @@ function text(content){
 }
 
 function code(){
-    const lines = [];
+    let lines = [];
+
+    function getText() {
+        const textLines = lines.map(line=>`    ${line}`);
+        textLines.unshift('\n');
+        textLines.push('\n');
+        return textLines;
+    }
+
+    function removeEmptyLinesAtTheEnd() {
+        lines = _.dropRightWhile(lines, (line) => /^\s*$/.test(line));
+    }
+
     return {
         addLine: (line) => lines.push(line),
+        removeEmptyLinesAtTheEnd,
 
-        getText: () => lines.map(line=>`    ${line}`),
+        getText,
         getHTML: () => `<code>${lines.join('\n')}<\code>`,
     }
 }
@@ -34,16 +49,14 @@ function listElement() {
     function getText() {
         const identifiedTexts = identified ? identified.getText() : [''];
 
-        // TODO loadash flatten
-
-        const listedText = identifiedTexts.map(
+        const flattenedIdentifiedTexts = _.flattenDeep(identifiedTexts);
+        return flattenedIdentifiedTexts.map(
             (textLine, index) => {
                 if (index === 0)
-                    return `* ${textLine}`;
-                return `  ${textLine}`;
+                    return `    * ${textLine}`;
+                return `      ${textLine}`;
             }
         );
-        return listedText;
     }
 
     return {
@@ -70,8 +83,8 @@ function list(numbered) {
     }
 
     function getText(){
-        const elementsText = elements.map(element => element.getText())
-        return elementsText;
+        const elementsText = elements.map(element => element.getText());
+        return _.flattenDeep(elementsText);
     }
 
     return {
@@ -96,6 +109,7 @@ function identified_lines() {
     let identified_array = [];
     let state = parsingStates.STANDARD;
     let currentListSymbol = null;
+    let blankCount = 0;
 
     function getHead() {
         const lastIndex = identified_array.length - 1;
@@ -145,9 +159,11 @@ function identified_lines() {
         addLineToCode(line);
     }
 
-    // TODO add remove the empty lines from the end of the code
+    // TODO add remove the empty lines from the end of the code loadash dropRightWhile
     function endCodeFromSpaces(){
         const finishedCode = getHead();
+        finishedCode.removeEmptyLinesAtTheEnd();
+
         state = parsingStates.STANDARD;
     }
 
@@ -196,10 +212,14 @@ function identified_lines() {
     return {
         getCurrentState: () => state,
         getCurrentListSymbol: () => currentListSymbol,
+        getBlankCount: () => blankCount,
+        increaseBlankCount: () => blankCount++,
+        resetBlankCount: () => blankCount=0,
 
         addHeadline,
 
         addText,
+        convertPreviousTextIntoHeadline,
 
         startCodeFromMark,
         endCodeFromMark,
@@ -214,13 +234,11 @@ function identified_lines() {
 
 
         setStandardState: () => state = parsingStates.STANDARD,
-        convertPreviousTextIntoHeadline,
 
         getText: () => identified_array.map((line)=> line.getText()),
         getHTML: () => identified_array.map((line)=> line.getHTML()),
     }
 }
-
 
 function identify_lines(current_identified, line, currentIndex, lines_array) {
     const identify_until = functions => {
@@ -238,7 +256,7 @@ function identify_lines(current_identified, line, currentIndex, lines_array) {
 
     const identify_state = current_identified.getCurrentState();
     const identify_list_symbol = current_identified.getCurrentListSymbol();
-    
+
     function identifyEmptyStandard() {
         const isEmpty = /^\s*$/.test(line);
         if(isEmpty){
@@ -246,7 +264,7 @@ function identify_lines(current_identified, line, currentIndex, lines_array) {
         }
         return isEmpty;
     }
-    
+
     function identifyHeadline() {
         const isHeadline = /^ {0,3}(#{1,6})( *(.*))?$/.exec(line);
         if (isHeadline){
@@ -437,7 +455,12 @@ function identify_lines(current_identified, line, currentIndex, lines_array) {
             function identifyCustomEmptyLineFromUnorderedLine() {
                 const is_empty = /^\s*$/.test(line);
                 if (is_empty){
+                    current_identified.increaseBlankCount();
                     unorderedListLastLineProcess();
+                }
+                if (current_identified.getBlankCount() > 2){
+                    current_identified.resetBlankCount();
+                    return false
                 }
                 return is_empty;
             }
@@ -463,22 +486,35 @@ function identify_lines(current_identified, line, currentIndex, lines_array) {
     return current_identified;
 }
 
-const input = `
-- hola1
+const input = `- hola1
   - hola2
     hola2.1
     hola2.2
+    hola2.3
+  - hola2.4
+    hola2.5
+    hola2.6
+    hola2.7
+    hola2.8
 - hola3
   
 - hola4
   hola5
 
-- hola6
-  
-  
-`;
+- # hola6
+        hola
+         que
+          tal
+
+            hola
+             que
+              tal`;
 
 const step1 = input.split('\n');
 const step2 = step1.reduce(identify_lines, identified_lines());
-console.log(step2.getText());
-//console.log(step2.getHTML());
+
+const textLines = step2.getText();
+const separatedLines = _.flatten(textLines);
+
+console.log(separatedLines.join('\n'));
+console.log(1);
