@@ -38,12 +38,20 @@ function code() {
         lines = _.dropRightWhile(lines, (line) => /^\s*$/.test(line));
     }
 
+
+    function getHtml() {
+        const textHtml = [...lines];
+        textHtml.unshift('<pre><code>');
+        textHtml.push('</code></pre>');
+        return textHtml;
+    }
+
     return {
         addLine: (line) => lines.push(line),
         removeEmptyLinesAtTheEnd,
 
         getText,
-        getHtml: () => `<code>${lines.join('\n')}</code>`,
+        getHtml,
     }
 }
 
@@ -650,26 +658,7 @@ function identify_lines() {
     }
 }
 
-const input = `
-#hola
-
-- hola
-  que pasó
-  - que
-  - cosa
-- Buano
-  8.        Que cosa
-            A = 8
-            B = 10
-  2. n
-  3. n
--
--
--
-
-hhhh
-
-`;
+const input = ``;
 
 const pipe = functions =>data=>{
     return functions.reduce((value,func)=>func(value),data)
