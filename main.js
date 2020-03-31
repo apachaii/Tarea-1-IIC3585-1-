@@ -350,7 +350,6 @@ function identify_lines() {
             }
             return test_successful;
         }
-
     }
 
     function isLast(currentIndex, lines_array) {
@@ -364,7 +363,7 @@ function identify_lines() {
     );
 
     const identifyHeadline = basicPatterIdentify(
-        /^ {0,3}(#{1,6})( *(.*))?$/,
+        /^ {0,3}(#{1,6})( +(.*))?$/,
         (isHeadline, current_identified) => {
             const headline_level = isHeadline[1].length;
             const headline_content = isHeadline[3];
@@ -652,13 +651,16 @@ function identify_lines() {
 }
 
 const input = `
+#hola
 
 - hola
   que pasó
   - que
   - cosa
 - Buano
-  8. n
+  8.        Que cosa
+            A = 8
+            B = 10
   2. n
   3. n
 -
