@@ -3,7 +3,7 @@ const _ = require('lodash');
 function headline(level, content) {
     return {
         getText: () => `${content}\n`,
-        getHtml: () => `<h${level}>${content}<\h${level}>`
+        getHtml: () => `<h${level}>${content}</h${level}>`
     }
 }
 
@@ -19,7 +19,7 @@ function text(content) {
             if (content === "") {
                 return "<br>"
             }
-            return `<p>${content}<\p>`
+            return `<p>${content}</p>`
         },
     }
 }
@@ -43,7 +43,7 @@ function code() {
         removeEmptyLinesAtTheEnd,
 
         getText,
-        getHtml: () => `<code>${lines.join('\n')}<\code>`,
+        getHtml: () => `<code>${lines.join('\n')}</code>`,
     }
 }
 
@@ -671,22 +671,20 @@ hhhh
 
 `;
 
-const step1 = input.split('\n');
-const step2 = step1.reduce(identify_lines(), identified_lines());
-
-const textLines = step2.getText();
-const separatedLines = _.flatten(textLines);
-const WEB = separatedLines.join('\n');
-
-const step3 = input.split('\n');
-const step4 = step3.reduce(identify_lines(), identified_lines());
-
-const textLines3 = step4.getHtml();
-const separatedLines3 = _.flatten(textLines3);
-const WEB2 = separatedLines3.join('\n');
-
-console.log(WEB2);
-
-module.exports = {
-    WEB
+const pipe = functions =>data=>{
+    return functions.reduce((value,func)=>func(value),data)
 };
+
+const basic_transform = (used_get) => pipe([
+    original_markdown => original_markdown.split('\n'),
+    markdown_lines => markdown_lines.reduce(identify_lines(), identified_lines()),
+    identified_lines => identified_lines[used_get](),
+    string_lines => _.flatten(string_lines),
+    text_lines => text_lines.join('\n'),
+]);
+
+const toText = basic_transform('getText');
+
+const toHtml = basic_transform('getHtml');
+
+console.log(toHtml(input));
