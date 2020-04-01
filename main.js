@@ -658,7 +658,19 @@ function identify_lines() {
     }
 }
 
-const input = ``;
+const input = `
+- hola
+-Esto
+- es
+- una
+- lista
+Estao es Texto
+   esto igual es lista
+    esto es code
+8. lista
+2. orde
+    3. nada
+`;
 
 const pipe = functions =>data=>{
     return functions.reduce((value,func)=>func(value),data)
@@ -676,4 +688,7 @@ const toText = basic_transform('getText');
 
 const toHtml = basic_transform('getHtml');
 
+
 console.log(toHtml(input));
+console.log(toText(input));
+
